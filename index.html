@@ -422,10 +422,9 @@
             display: flex;
             gap: 8px;
             margin-bottom: 20px;
-            overflow-x: auto;
+            flex-wrap: wrap; /* Fixed: Now wraps on mobile */
             width: 100%;
             justify-content: center;
-            scrollbar-width: none;
         }
 
         .lang-bar::-webkit-scrollbar {
@@ -543,12 +542,13 @@
             </button>
             <div>
                 <h3 id="activeChatName" style="margin: 0;">Friend Name</h3>
-                <div id="connectionStatus"
-                    style="display: flex; align-items: center; gap: 4px; color: var(--success); font-size: 0.75rem;">
-                    <span style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></span>
-                    Connected
+                <div id="connectionStatus" style="display: flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: 0.75rem;">
+                    <span style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></span> Connecting...
                 </div>
             </div>
+            <button id="speakerToggle" class="glass" style="width: 40px; height: 40px; border-radius: 12px; display: flex; align-items: center; justify-content: center; cursor: pointer; color: var(--text-muted); margin-left: auto;" onclick="toggleMute()">
+                <i data-lucide="volume-2"></i>
+            </button>
         </div>
 
         <div id="chatMessages" class="chat-messages"></div>
@@ -579,9 +579,11 @@
 
         let peer = null;
         let connection = null;
+        let msgQueue = [];
         let myNumber = localStorage.getItem('qt_myNumber');
         let myLang = localStorage.getItem('qt_myLang') || 'en';
         let contacts = JSON.parse(localStorage.getItem('quickContacts') || '[]');
+        let isMuted = false;
 
         // --- Init ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -662,6 +664,7 @@
 
         // --- Call Flow ---
         function startCall(contact) {
+            primeSpeaker();
             document.getElementById('callingName').innerText = contact.name;
             document.getElementById('outgoingOverlay').classList.add('active');
 
@@ -674,6 +677,7 @@
         }
 
         function acceptCall() {
+            primeSpeaker();
             document.getElementById('incomingOverlay').classList.remove('active');
             setupConnectionHandlers(connection);
             connection.send({ type: 'handshake-accept', lang: myLang });
@@ -793,6 +797,13 @@
         };
 
         async function handleIncomingVoice(data) {
+            if (isMuted) {
+                // Just add message, no audio
+                const translated = await translate(data.text, data.fromLang, myLang);
+                addMessage(translated, 'theirs', data.text);
+                return;
+            }
+
             // Translate to my language
             const translated = await translate(data.text, data.fromLang, myLang);
             addMessage(translated, 'theirs', data.text);
@@ -801,6 +812,22 @@
             const utterance = new SpeechSynthesisUtterance(translated);
             utterance.lang = LANGUAGES.find(l => l.code === myLang).voice;
             window.speechSynthesis.speak(utterance);
+        }
+
+        function primeSpeaker() {
+            try {
+                // Prime the engine with an empty utterance to unlock mobile audio
+                const utterance = new SpeechSynthesisUtterance("");
+                window.speechSynthesis.speak(utterance);
+            } catch (e) {}
+        }
+
+        function toggleMute() {
+            isMuted = !isMuted;
+            const btn = document.getElementById('speakerToggle');
+            btn.innerHTML = `<i data-lucide="${isMuted ? 'volume-x' : 'volume-2'}"></i>`;
+            btn.style.color = isMuted ? 'var(--danger)' : 'var(--text-muted)';
+            lucide.createIcons();
         }
 
         async function translate(text, from, to) {
