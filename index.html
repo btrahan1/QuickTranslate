@@ -700,6 +700,24 @@
         }
 
         function setupConnectionHandlers(conn) {
+            const updateUIConnected = () => {
+                const status = document.getElementById('connectionStatus');
+                if (status) {
+                    status.style.color = 'var(--success)';
+                    status.innerHTML = '<span style="width: 6px; height: 6px; background: currentColor; border-radius: 50%;"></span> Connected';
+                }
+                // Flush the queue
+                while (msgQueue.length > 0) {
+                    conn.send(msgQueue.shift());
+                }
+            };
+
+            if (conn.open) {
+                updateUIConnected();
+            } else {
+                conn.on('open', updateUIConnected);
+            }
+
             conn.on('data', data => {
                 if (data.type === 'handshake-accept') {
                     document.getElementById('outgoingOverlay').classList.remove('active');
@@ -711,7 +729,13 @@
 
             conn.on('close', () => {
                 showScreen('homeScreen');
+                msgQueue = [];
                 alert("Call ended");
+            });
+
+            conn.on('error', (err) => {
+                console.error("Connection error:", err);
+                showScreen('homeScreen');
             });
         }
 
