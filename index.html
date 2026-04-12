@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js" integrity="sha512-SGuoYXzZ0I+n9uC95qNfL6pE8n3u07fscZl3Dshv1uHevebnt6Z94f1c1Xv6Z2v8uP+O/Vp8nE1m5pU9nO/Vw==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <style>
         :root {
@@ -870,12 +870,18 @@
             const canvas = document.getElementById('qrcodeCanvas');
             const display = document.getElementById('shareLinkDisplay');
             
+            // Safety check for library
+            const QRHandler = window.QRCode || window.qrcode;
+            if (!QRHandler) {
+                return alert("QR Code library still loading... please wait a moment.");
+            }
+
             // Clean URL (remove existing query params)
             const baseUrl = window.location.href.split('?')[0];
             const shareUrl = `${baseUrl}?call=${myNumber}`;
             display.innerText = shareUrl;
 
-            QRCode.toCanvas(canvas, shareUrl, {
+            QRHandler.toCanvas(canvas, shareUrl, {
                 width: 256,
                 margin: 0,
                 color: {
