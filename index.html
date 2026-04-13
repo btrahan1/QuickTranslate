@@ -7,7 +7,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>QuickTranslate v1.0.7</title>
+    <title>QuickTranslate v1.0.8</title>
     <!-- Dependencies -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -250,6 +250,17 @@
         @keyframes status-pulse {
             0% { transform: scale(1); opacity: 0.8; }
             100% { transform: scale(3); opacity: 0; }
+        }
+
+        /* Evicted Overlay */
+        #evictedOverlay {
+            text-align: center;
+            background: rgba(15, 23, 42, 0.98);
+        }
+
+        #evictedOverlay i {
+            color: var(--primary);
+            margin-bottom: 24px;
         }
 
         /* Overlays */
@@ -503,7 +514,7 @@
             <input type="tel" id="myPhoneInput" placeholder="e.g. 5551234567">
             <button id="setupBtn" class="btn btn-primary" onclick="setupIdentity()">Start Translating</button>
         </div>
-        <p style="margin-top: 24px; font-size: 0.7rem; color: var(--text-muted); text-align: center;">QuickTranslate v1.0.7</p>
+        <p style="margin-top: 24px; font-size: 0.7rem; color: var(--text-muted); text-align: center;">QuickTranslate v1.0.8</p>
     </div>
 
     <!-- Home Screen -->
@@ -533,7 +544,7 @@
             <button class="glass"
                 style="padding: 10px 20px; border-radius: 12px; color: var(--text-muted); cursor: pointer;"
                 onclick="resetApp()">Settings / Reset</button>
-            <p style="margin-top: 12px; font-size: 0.7rem; color: var(--text-muted);">v1.0.7</p>
+            <p style="margin-top: 12px; font-size: 0.7rem; color: var(--text-muted);">v1.0.8</p>
         </div>
     </div>
 
@@ -571,6 +582,14 @@
             <button class="btn btn-primary" onclick="copyShareLink()">Copy Link</button>
             <button class="btn btn-secondary" onclick="document.getElementById('shareModal').classList.remove('active')">Close</button>
         </div>
+    </div>
+
+    <!-- Evicted Overlay -->
+    <div id="evictedOverlay" class="overlay">
+        <i data-lucide="layers" style="width: 64px; height: 64px;"></i>
+        <h2>Active Elsewhere</h2>
+        <p style="color: var(--text-muted); margin-bottom: 32px;">This app was opened in another tab.<br>This instance is now inactive.</p>
+        <button class="btn btn-primary" onclick="location.reload()">Switch Back to This Tab</button>
     </div>
 
     <!-- Conversation Screen -->
@@ -625,6 +644,7 @@
         let myLang = localStorage.getItem('qt_myLang') || 'en';
         let contacts = JSON.parse(localStorage.getItem('quickContacts') || '[]');
         let isMuted = false;
+        const syncChannel = new BroadcastChannel('qt_sync');
 
         // --- Init ---
         document.addEventListener('DOMContentLoaded', () => {
@@ -654,9 +674,20 @@
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && peer && peer.disconnected) {
                 console.log("App focused, re-connecting peer...");
+                syncChannel.postMessage({ type: 'TAKEOVER', number: myNumber });
                 peer.reconnect();
             }
         });
+
+        // Multi-Tab Sync (Ghost-Bustering)
+        syncChannel.onmessage = (e) => {
+            if (e.data.type === 'TAKEOVER' && e.data.number === myNumber) {
+                if (peer) {
+                    peer.destroy();
+                    document.getElementById('evictedOverlay').classList.add('active');
+                }
+            }
+        };
 
         function showScreen(id) {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -664,26 +695,19 @@
         }
 
         // --- Identity & Peer ---
-        async function setupIdentity() {
-            const input = document.getElementById('myPhoneInput').value.trim();
-            if (!input) return alert("Please enter your number");
-
-            // Permission Primer: Requests mic access immediately to avoid stutters later
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach(track => track.stop());
-            } catch (e) {
-                console.warn("Microphone permission denied or not supported:", e);
-                alert("This app requires microphone access to work. Please allow it and try again.");
-                return;
-            }
+        function setupIdentity() {
+            const inputEl = document.getElementById('myPhoneInput');
+            const btn = document.getElementById('setupBtn');
+            const val = inputEl.value.trim();
+            if (!val) return alert("Please enter your number");
             
-            myNumber = input.value.replace(/\D/g, '');
+            myNumber = val.replace(/\D/g, '');
             localStorage.setItem('qt_myNumber', myNumber);
             
             btn.disabled = true;
             btn.innerText = "Registering...";
             
+            syncChannel.postMessage({ type: 'TAKEOVER', number: myNumber });
             initPeer();
         }
 
@@ -942,18 +966,50 @@
         // --- UI Helpers ---
         function renderContacts() {
             const list = document.getElementById('contactList');
-            list.innerHTML = '';
-            contacts.forEach(c => {
+            list.innerHTML = contacts.length === 0 ? '<p style="text-align: center; color: var(--text-muted); margin-top: 40px;">No friends added yet.</p>' : '';
+            contacts.forEach((c, idx) => {
                 const card = document.createElement('div');
                 card.className = 'glass contact-card';
-                card.onclick = () => startCall(c);
+                card.style.cursor = 'default';
                 card.innerHTML = `
                     <div class="contact-avatar">👤</div>
-                    <div class="contact-name">${c.name}</div>
-                    <div style="font-size: 0.7rem; color: var(--text-muted);">${c.number}</div>
+                    <div style="flex: 1; text-align: left;">
+                        <div class="contact-name">${c.name}</div>
+                        <div style="font-size: 0.7rem; color: var(--text-muted);">${c.number}</div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-round btn-secondary" onclick="sendInvite(${idx})" title="Ping Friend" style="width: 36px; height: 36px;">
+                            <i data-lucide="message-square-plus" style="width: 18px;"></i>
+                        </button>
+                        <button class="btn-round btn-primary" onclick="startCall(contacts[${idx}])" style="width: 36px; height: 36px;">
+                            <i data-lucide="phone" style="width: 18px;"></i>
+                        </button>
+                    </div>
                 `;
                 list.appendChild(card);
             });
+            lucide.createIcons();
+        }
+
+        async function sendInvite(index) {
+            const contact = contacts[index];
+            const baseUrl = window.location.href.split('?')[0];
+            const inviteUrl = `${baseUrl}?call=${myNumber}`;
+            const message = `Hey ${contact.name}, let's talk on QuickTranslate! Tap here to join: ${inviteUrl}`;
+
+            if (navigator.share) {
+                try {
+                    await navigator.share({
+                        title: 'QuickTranslate Invitation',
+                        text: message,
+                        url: inviteUrl
+                    });
+                } catch (err) {
+                    console.log("Share cancelled or failed", err);
+                }
+            } else {
+                window.location.href = `sms:${contact.number}?body=${encodeURIComponent(message)}`;
+            }
         }
 
         function openAddContact() {
