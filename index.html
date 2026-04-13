@@ -7,7 +7,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>QuickTranslate v1.0.6</title>
+    <title>QuickTranslate v1.0.7</title>
     <!-- Dependencies -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -501,9 +501,9 @@
             <p style="text-align: left; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Your Phone
                 Number</p>
             <input type="tel" id="myPhoneInput" placeholder="e.g. 5551234567">
-            <button class="btn btn-primary" onclick="setupIdentity()">Start Translating</button>
+            <button id="setupBtn" class="btn btn-primary" onclick="setupIdentity()">Start Translating</button>
         </div>
-        <p style="margin-top: 24px; font-size: 0.7rem; color: var(--text-muted); text-align: center;">QuickTranslate v1.0.6</p>
+        <p style="margin-top: 24px; font-size: 0.7rem; color: var(--text-muted); text-align: center;">QuickTranslate v1.0.7</p>
     </div>
 
     <!-- Home Screen -->
@@ -533,7 +533,7 @@
             <button class="glass"
                 style="padding: 10px 20px; border-radius: 12px; color: var(--text-muted); cursor: pointer;"
                 onclick="resetApp()">Settings / Reset</button>
-            <p style="margin-top: 12px; font-size: 0.7rem; color: var(--text-muted);">v1.0.6</p>
+            <p style="margin-top: 12px; font-size: 0.7rem; color: var(--text-muted);">v1.0.7</p>
         </div>
     </div>
 
@@ -677,12 +677,14 @@
                 alert("This app requires microphone access to work. Please allow it and try again.");
                 return;
             }
-
-            myNumber = input.replace(/\D/g, '');
+            
+            myNumber = input.value.replace(/\D/g, '');
             localStorage.setItem('qt_myNumber', myNumber);
+            
+            btn.disabled = true;
+            btn.innerText = "Registering...";
+            
             initPeer();
-            showScreen('homeScreen');
-            renderContacts();
         }
 
         function initPeer() {
@@ -692,6 +694,12 @@
             peer.on('open', id => {
                 document.getElementById('myNumberLabel').innerText = `ID: ${myNumber}`;
                 updateStatusDot(true);
+                
+                // If we are in onboarding, move to home now that we are ready
+                if (document.getElementById('onboardingScreen').classList.contains('active')) {
+                    showScreen('homeScreen');
+                    renderContacts();
+                }
             });
 
             peer.on('disconnected', () => {
